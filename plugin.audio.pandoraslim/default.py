@@ -239,21 +239,28 @@ def panSong(song):
         _settings.setSetting("img-%s" % song.stationId, song.artUrl)
 
     if xbmcvfs.exists(lib):			# Found in Library
-        xbmc.log("%s.Song LIB (%13s)           '%s - %s - %s'" % (_plugin, _stamp, song.songId[:4], song.artist, song.title))
+        xbmc.log("%s.Song LIB (%13s)           '%s - %s - %s'" % (_plugin, _stamp, song.songId[:4], safe_str(song.artist), safe_str(song.title)))
         panQueue(song, lib)
 
     elif xbmcvfs.exists(m4a):			# Found in Cache
-        xbmc.log("%s.Song M4A (%13s)           '%s - %s - %s'" % (_plugin, _stamp, song.songId[:4], song.artist, song.title))
+        xbmc.log("%s.Song M4A (%13s)           '%s - %s - %s'" % (_plugin, _stamp, song.songId[:4], safe_str(song.artist), safe_str(song.title)))
         panQueue(song, m4a)
 
     elif _settings.getSetting('mode') == '0':	# Stream Only
-        xbmc.log("%s.Song PAN (%13s)           '%s - %s - %s'" % (_plugin, _stamp, song.songId[:4], song.artist, song.title))
+        xbmc.log("%s.Song PAN (%13s)           '%s - %s - %s'" % (_plugin, _stamp, song.songId[:4], safe_str(song.artist), safe_str(song.title))) 
         qual = _settings.getSetting('quality')
-        panQueue(song, song.audioUrl[qual])
-
+        if qual in song.audioUrl:
+            panQueue(song, song.audioUrl[qual])
+        else:
+            xbmc.log("quality of that song not available to stream") 
     else:					# Cache / Save
         panFetch(song, m4a)
 
+def safe_str(obj):
+    try: return str(obj)
+    except UnicodeEncodeError:
+        return obj.encode('ascii', 'ignore').decode('ascii')
+    return ""
 
 def panStrip(song):
     badc        = '\\/?%*:|"<>.'	# remove bad filename chars
@@ -364,7 +371,7 @@ def panLoop():
             xbmc.log("%s.Loop%4d (%13s, %f) '%s - %s'" % (_plugin, threading.active_count(), _stamp, _high, _station.id[-4:], _station.name), xbmc.LOGDEBUG)
 
             _lock.acquire()
-            if _playlist.getposition() >= 0:
+            if _playlist.getposition() >= 0 and _playlist.getposition() < len(_playlist):
                 if _playlist[_playlist.getposition()].getProperty(_plugin) == _stamp:
                     panCheck()
                     _lock.release()

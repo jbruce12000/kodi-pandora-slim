@@ -187,6 +187,8 @@ def panFetch(song, path):
     qual = _settings.getSetting('quality')
     skip = _settings.getSetting('skip')
 
+    if qual not in song.audioUrl:
+        return None
     url  = urlparse.urlsplit(song.audioUrl[qual])
     conn = httplib.HTTPConnection(url.netloc, timeout = 9)
     conn.request('GET', "%s?%s" % (url.path, url.query))
@@ -262,7 +264,7 @@ def panSong(song):
         if qual in song.audioUrl:
             panQueue(song, song.audioUrl[qual])
         else:
-            xbmc.log("%s.Song (%13s) quality of that song not available to stream" % (_plugin, _stamp)) 
+            xbmc.log("%s.Song (%13s) quality of that song not available to stream" % (_plugin, _stamp))
     else:					# Cache / Save
         panFetch(song, m4a)
 

@@ -172,8 +172,18 @@ def panMsg(song, msg):
 def panFetch(song, path):
     global _high
 
-    isad = int(_settings.getSetting('isad')) * 1024
-    wait = int(_settings.getSetting('delay'))
+    # after initial installation isad='' which bombed out here
+    try:
+        isad = int(_settings.getSetting('isad')) * 1024
+    except ValueError:
+        isad = 256
+    
+    # this likely would cause the same error, fixing it too
+    try:
+        wait = int(_settings.getSetting('delay'))
+    except ValueError:
+        wait = 5
+
     qual = _settings.getSetting('quality')
     skip = _settings.getSetting('skip')
 

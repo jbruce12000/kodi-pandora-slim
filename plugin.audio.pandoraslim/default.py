@@ -195,7 +195,7 @@ def panFetch(song, path):
 
     if size in (341980, 173310): # empty song cause requesting to fast
         xbmc.log("%s.Fetch MT (%13s,%8d)  '%s - %s - %s'" % (_plugin, _stamp, size, song.songId[:4], song.artist, song.title), xbmc.LOGDEBUG)
-        panMsg(song, 'To Many Songs Requested')
+        panMsg(song, 'Too Many Songs Requested')
         return
 
     xbmc.log("%s.Fetch %s (%13s,%8d)  '%s - %s - %s'" % (_plugin, strm.reason, _stamp, size, song.songId[:4], song.artist, song.title))
@@ -262,7 +262,7 @@ def panSong(song):
         if qual in song.audioUrl:
             panQueue(song, song.audioUrl[qual])
         else:
-            xbmc.log("quality of that song not available to stream") 
+            xbmc.log("%s.Song (%13s) quality of that song not available to stream" % (_plugin, _stamp)) 
     else:					# Cache / Save
         panFetch(song, m4a)
 

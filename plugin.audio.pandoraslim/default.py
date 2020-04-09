@@ -96,7 +96,6 @@ class PandoraSlim(object):
 
     def Grabsongs(self):
         '''Grab a list of songs from Pandora'''
-        # another global for threading?
 
         if not self.Auth():
             if type(self.station) is not Station: str = "%s.Fill NOAUTH (%s)" % self.station[0]
@@ -107,7 +106,6 @@ class PandoraSlim(object):
 
         if type(self.station) is not Station: self.station = self.pandora.get_station_by_id(self.station[0])
 
-        # FIXME - should a dialog really be shown here? not sure.
         try: psongs = self.station.get_playlist()
         except (PandoraTimeout, PandoraNetError): pass
         except (PandoraAuthTokenInvalid, PandoraAPIVersionError, PandoraError) as e:
@@ -422,15 +420,16 @@ class PandoraSlimSong(object):
         if not self.pslim.settings.getSetting("img-%s" % self.stationId): #FIXME - sometime try making name img-station-%s here
             self.pslim.settings.setSetting("img-%s" % self.stationId, self.artUrl)
 
-        if xbmcvfs.exists(lib):			# Found in Library
+        # Found in Library
+        if xbmcvfs.exists(lib): # Found in Library
             xbmc.log("%s.Song LIB (%13s)           '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.safe_str(self.artist), self.safe_str(self.title)))
             self.Queue(lib)
-
-        elif xbmcvfs.exists(m4a):			# Found in Cache
+         
+        elif xbmcvfs.exists(m4a): # Found in Cache
             xbmc.log("%s.Song M4A (%13s)           '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.safe_str(self.artist), self.safe_str(self.title)))
             self.Queue(m4a)
 
-        elif self.pslim.settings.getSetting('mode') == '0':	# Stream Only
+        elif self.pslim.settings.getSetting('mode') == '0': # Stream Only
             xbmc.log("%s.Song PAN (%13s)           '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.safe_str(self.artist), self.safe_str(self.title))) 
             qual = self.pslim.settings.getSetting('quality')
             if qual in self.audioUrl:

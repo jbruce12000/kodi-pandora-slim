@@ -18,6 +18,7 @@ class PandoraSlim(object):
         self.station = self.query.get('station', None)
         self.thumb = self.query.get('thumb', None)
         self.playlist = xbmc.PlayList(xbmc.PLAYLIST_MUSIC)
+        self.playlist.clear() # FIXME - probably not needed
         self.player = xbmc.Player()
         self.pandora = Pandora()  # from pithos.pithos
         self.lock = threading.Lock()
@@ -28,6 +29,8 @@ class PandoraSlim(object):
         self.stamp = self.started
         self.brain = _brain
         self.brain.set_useragent("xbmc.%s" % self.plugin, self.version)
+        self.SetCacheDirs()
+
 
     def Proxy(self):
         '''set pandoras url opener'''
@@ -59,18 +62,14 @@ class PandoraSlim(object):
             xbmc.log("%s.Auth FAILED" % self.plugin, xbmc.LOGERROR)
             return False;
 
-        xbmc.log("%s.Auth  OK" % self.plugin, xbmc.LOGDEBUG)
+        self.log("Auth OK")
         return True
 
 
-    def Dir(self):
+    def DisplayStations(self):
         '''add stations to directory listing'''
 
-        # authenticate in a loop until success
-        while not self.Auth():
-            if xbmcgui.Dialog().yesno(_name, '          Login Failed', 'Bad User / Pass / Proxy', '       Check Settings?'):
-                self.settings.openSettings()
-            else: exit()
+        self.CheckAuth()
 
         sort = self.settings.getSetting('sort')
         stations = self.pandora.stations
@@ -92,25 +91,17 @@ class PandoraSlim(object):
             xbmcplugin.addDirectoryItem(self.handle, "%s?station=%s" % (self.base, station.id), li)
 
         xbmcplugin.endOfDirectory(self.handle, cacheToDisc = False)
-        xbmc.log("%s.Dir   OK" % self.plugin, xbmc.LOGDEBUG)
+        xbmc.log("%s.DisplayStations OK" % self.plugin, xbmc.LOGDEBUG)
 
     def Grabsongs(self):
         '''Grab a list of songs from Pandora'''
-
-        if not self.Auth():
-            if type(self.station) is not Station: str = "%s.Fill NOAUTH (%s)" % self.station[0]
-            else:
-                str = "%s.Fill NOAUTH (%s) '%s'" % (self.station.id, self.station.name)
-                xbmc.log(str, xbmc.LOGWARNING)
-            return
-
         if type(self.station) is not Station: self.station = self.pandora.get_station_by_id(self.station[0])
 
         try: psongs = self.station.get_playlist()
         except (PandoraTimeout, PandoraNetError): pass
         except (PandoraAuthTokenInvalid, PandoraAPIVersionError, PandoraError) as e:
             xbmcgui.Dialog().ok(_name, e.message, '', e.submsg)
-            return
+            exit()
 
         for psong in psongs:
             song = PandoraSlimSong(self,psong) # passing PandoraSlim and a song
@@ -119,35 +110,15 @@ class PandoraSlim(object):
         xbmc.log("%s.Grabsongs  OK (%13s,%8d)          '%s - %s'" % (self.plugin, self.stamp, len(psongs), self.station.id[-4:], self.station.name), xbmc.LOGDEBUG)
 
     def Play(self):
+
+        # not sure why this exists
         li = xbmcgui.ListItem(self.station[0])
         li.setPath("special://home/addons/%s/silent.m4a" % self.plugin)
         li.setProperty(self.plugin, self.stamp)
         li.setProperty('mimetype', 'audio/aac')
 
-        self.lock.acquire()
-        start = time.time()
-        self.Grabsongs()
 
-        while not self.play:
-            time.sleep(0.01)
-            xbmc.sleep(1000)
-
-            if xbmc.abortRequested:
-                self.lock.release()
-                exit()
-
-            if (threading.active_count() == 1) or ((time.time() - start) >= 60):
-                if self.play: break     # check one last time before we bail
-
-                xbmc.log("%s.Play BAD (%13s, %ds)" % (self.plugin, self.stamp, time.time() - start))
-                xbmcgui.Dialog().ok(self.name, 'No Tracks Received', '', 'Try again later')
-                exit()
-
-        self.playlist.clear()
-        self.lock.release()
-        time.sleep(0.01)    # yield to the song threads
-        xbmc.sleep(1000)    # might return control to xbmc and skip the other threads ?
-
+        # not sure about his stuff either
         xbmcplugin.setResolvedUrl(self.handle, True, li)
         self.player.play(self.playlist)
         xbmc.executebuiltin('ActivateWindow(10500)')
@@ -155,77 +126,103 @@ class PandoraSlim(object):
         xbmc.log("%s.Play  OK (%13s)           '%s - %s'" % (self.plugin, self.stamp, self.station.id[-4:], self.station.name))
 
 
-    def Grabmore(self):
-        '''Grabs more songs if we're low'''
-        # FIXME - why isn't this whole function a part of Grabsongs?
-    #    if (threading.active_count() == 1) and 
-
-        # I think this pulls more 3 more songs when we're low
-        if ((self.playlist.size() - self.playlist.getposition()) <= 2):
-            self.Grabsongs()
-
-        # if the playlist is over make size, delete one?
-        # FIXME - not sure this is the best way to do this
+    def ExpireFromPlaylist(self):
+        '''Remove the first item from the playlist'''
         while (self.playlist.size() > int(self.settings.getSetting('listmax'))) and (self.playlist.getposition() > 0):
             xbmc.executeJSONRPC('{"jsonrpc":"2.0", "id":1, "method":"Playlist.Remove", "params":{"playlistid":' + str(xbmc.PLAYLIST_MUSIC) + ', "position":0}}')
 
-        # wtf is this?
-        if xbmcgui.getCurrentWindowId() == 10500:
-            xbmc.executebuiltin("Container.Refresh")
-
-    def Expire(self):
+    def ExpireFiles(self):
+        '''remove files from the filesystem per settings'''
         m4a = xbmc.translatePath(self.settings.getSetting('m4a')).decode("utf-8")
         exp = time.time() - (float(self.settings.getSetting('expire')) * 3600.0)
         reg = re.compile('^[a-z0-9]{32}\.')
 
         (dirs, list) = xbmcvfs.listdir(m4a)
 
-        for file in list:
-            if reg.match(file):
-                file = "%s/%s" % (m4a, file)
+        for file in list: if reg.match(file): file = "%s/%s" % (m4a, file)
 
                 if xbmcvfs.Stat(file).st_mtime() < exp:
-                    xbmc.log("%s.Expire   (%13s) '%s'" % (self.plugin, self.stamp, file), xbmc.LOGDEBUG)
                     xbmcvfs.delete(file)
+                    self.log("ExpireFiles %s" % (file))
 
-    def Loop(self):
-        next = time.time() + int(self.settings.getSetting('delay')) + 1
+    def CheckAuth(self):
+        '''authenticate in a loop until success'''
+        while not self.Auth():
+            if xbmcgui.Dialog().yesno(_name, '          Login Failed', 'Bad User / Pass / Proxy', '       Check Settings?'):
+                self.settings.openSettings()
+            else: exit()
+
+    def StationSelected(self):
+        if self.station is None: return False
+        self.log("station %s selected" % self.station)
+        self.SetStationThumb()
+        return True
+  
+    def SetCacheDirs(self):
+        '''set cache directories, runs once at startup'''
+        for dir in [ 'm4a', 'lib' ]:
+            dir = xbmc.translatePath(self.settings.getSetting(dir)).decode("utf-8")
+            xbmcvfs.mkdirs(dir)
+
+    def SetStationThumb(self):
+        '''set thumbnail for station to first song in playlist'''
+        # stations initially have a default thumb
+        # only once it is selected can we give it a thumb 
+        # from the first song in the playlist
+        if self.thumb: return
+
+        # set station thumbnail
+        img = self.playlist[0].artUrl #not sure this is possible (may need to use the following...
+        # img = self.playlist[0].getProperty(artUrl)
+        self.settings.setSetting("img-%s" % station.id, img)
+
+    def OutOfSongs(self):
+        '''are we out of songs in the cache'''
+        # I think we can have kodi grab songs while the current song is still playing
+        # FIXME - static lookahead of 3 here needs to be configurable
+        if self.playlist.size() == 0: return True
+        if (self.playlist.size() - self.playlist.getposition()) <= 2: return True
+        return False
+
+    def GrabSongs(self,count=3):
+        '''complete rewrite'''
+        
+        if self.playlist.size == 0:
+
+           
+
+        pass
+
+    def SongNotPlaying(self):
+        '''returns True if no song is currently playing'''
+        if self.player.isPlayingAudio(): return False
+        return True
+
+    def PlayNextSong(self):
+        '''play the next song'''
+
+        curr = self.playlist.getposition()
+        self.player.playselected(curr+1) # will this play just one song???
+         
+        # cleanup as needed 
+        self.ExpireFiles()
+        self.ExpireFromPlaylist()
+
+    def log(self,string,level=xbmc.LOGDEBUG):
+        xbmc.log("%s %s" % (self.plugin,string),level)
+
+    def start(self):
+        self.log("started") 
+        if not self.StationSelected(): 
+            self.DisplayStations()
+            exit()
 
         while (not xbmc.abortRequested):
             xbmc.sleep(1000)
+            if self.OutOfSongs(): self.GrabSongs()
+            if self.SongNotPlaying(): self.PlayNextSong()
 
-            if (time.time() >= next):
-                xbmc.log("%s.Loop%4d (%13s, %f) '%s - %s'" % (self.plugin, threading.active_count(), self.stamp, self.high, self.station.id[-4:], self.station.name), xbmc.LOGDEBUG)
-
-                self.lock.acquire()
-                if self.playlist.getposition() >= 0 and self.playlist.getposition() < len(self.playlist):
-                    if self.playlist[self.playlist.getposition()].getProperty(self.plugin) == self.stamp:
-                        self.Grabmore()
-                        self.lock.release()
-                        self.Expire()
-
-                    else:   # not our song in playlist, exit
-                        self.lock.release()
-                        break
-
-                next = time.time() + int(self.settings.getSetting('delay')) + 1
-
-    def start(self):
-        if self.thumb is not None:
-            img = xbmcgui.Dialog().browseSingle(2, 'Select Thumb', 'files', useThumbs = True)
-            self.settings.setSetting("img-%s" % _thumb[0], img)
-            xbmc.executebuiltin("Container.Refresh")
-
-        # FIXME - messy
-        elif self.station is not None:
-            for dir in [ 'm4a', 'lib' ]:
-                dir = xbmc.translatePath(self.settings.getSetting(dir)).decode("utf-8")
-                xbmcvfs.mkdirs(dir)
-            self.Play()
-            self.Loop()
-            xbmc.log("%s.Exit     (%13s, %f)" % (self.plugin, self.stamp, self.high))
-        else: 
-            self.Dir()
+        self.log("exit")
 
 class PandoraSlimSong(object):
     def __init__(self,pslim,psong):
@@ -298,7 +295,7 @@ class PandoraSlimSong(object):
 
         xbmc.log("%s.Save  OK (%13s) '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.artist, self.title), xbmc.LOGDEBUG)
 
-
+    # FIXME - this whole funtion needs to move to Pandoraslim
     def Queue(self,path):
         '''add song to the queue'''
         # these globals work across threads? not sure. leaving here.

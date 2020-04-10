@@ -21,16 +21,12 @@ class PandoraSlim(object):
         self.playlist.clear() # FIXME - probably not needed
         self.player = xbmc.Player()
         self.pandora = Pandora()  # from pithos.pithos
-        self.lock = threading.Lock()
-        self.play = False
         self.tracks = 0 # number of tracks in this playlist so far
-        self.high = 0.0 # not sure wtf this is for
         self.started = str(time.time())
         self.stamp = self.started
         self.brain = _brain
         self.brain.set_useragent("xbmc.%s" % self.plugin, self.version)
         self.SetCacheDirs()
-
 
     def Proxy(self):
         '''set pandoras url opener'''
@@ -62,12 +58,11 @@ class PandoraSlim(object):
             xbmc.log("%s.Auth FAILED" % self.plugin, xbmc.LOGERROR)
             return False;
 
-        self.log("Auth OK")
+        self.log("OK Auth")
         return True
 
-
     def DisplayStations(self):
-        '''add stations to directory listing'''
+        '''add stations to directory listing and display them'''
 
         self.CheckAuth()
 
@@ -91,10 +86,10 @@ class PandoraSlim(object):
             xbmcplugin.addDirectoryItem(self.handle, "%s?station=%s" % (self.base, station.id), li)
 
         xbmcplugin.endOfDirectory(self.handle, cacheToDisc = False)
-        xbmc.log("%s.DisplayStations OK" % self.plugin, xbmc.LOGDEBUG)
+        self.log("OK DisplayStations")
 
-    def Grabsongs(self):
-        '''Grab a list of songs from Pandora'''
+    def GrabSongs(self):
+        '''Grab some songs from Pandora'''
         if type(self.station) is not Station: self.station = self.pandora.get_station_by_id(self.station[0])
 
         try: psongs = self.station.get_playlist()
@@ -105,11 +100,13 @@ class PandoraSlim(object):
 
         for psong in psongs:
             song = PandoraSlimSong(self,psong) # passing PandoraSlim and a song
-            threading.Timer(0.01, song.Whereis).start() 
+            # FIX not sure what to do here
+            # Need to move all of PandoraSlimSong into this class 
 
-        xbmc.log("%s.Grabsongs  OK (%13s,%8d)          '%s - %s'" % (self.plugin, self.stamp, len(psongs), self.station.id[-4:], self.station.name), xbmc.LOGDEBUG)
+        self.log("OK GrabSongs station=%s, songs=%d" % (self.station.name, len(psongs)))
 
     def Play(self):
+        # FIXME - this whole def goes away...
 
         # not sure why this exists
         li = xbmcgui.ListItem(self.station[0])
@@ -143,7 +140,7 @@ class PandoraSlim(object):
 
                 if xbmcvfs.Stat(file).st_mtime() < exp:
                     xbmcvfs.delete(file)
-                    self.log("ExpireFiles %s" % (file))
+                    self.log("OK ExpireFiles %s" % (file))
 
     def CheckAuth(self):
         '''authenticate in a loop until success'''
@@ -154,7 +151,7 @@ class PandoraSlim(object):
 
     def StationSelected(self):
         if self.station is None: return False
-        self.log("station %s selected" % self.station)
+        self.log("OK StationSelected %s" % self.station)
         self.SetStationThumb()
         return True
   
@@ -182,20 +179,13 @@ class PandoraSlim(object):
         # FIXME - static lookahead of 3 here needs to be configurable
         if self.playlist.size() == 0: return True
         if (self.playlist.size() - self.playlist.getposition()) <= 2: return True
+        self.log("OK OutOfSongs")
         return False
-
-    def GrabSongs(self,count=3):
-        '''complete rewrite'''
-        
-        if self.playlist.size == 0:
-
-           
-
-        pass
 
     def SongNotPlaying(self):
         '''returns True if no song is currently playing'''
         if self.player.isPlayingAudio(): return False
+        self.log("OK SongNotPlaying")
         return True
 
     def PlayNextSong(self):
@@ -212,17 +202,17 @@ class PandoraSlim(object):
         xbmc.log("%s %s" % (self.plugin,string),level)
 
     def start(self):
-        self.log("started") 
+        self.log("OK started") 
         if not self.StationSelected(): 
             self.DisplayStations()
             exit()
 
         while (not xbmc.abortRequested):
-            xbmc.sleep(1000)
             if self.OutOfSongs(): self.GrabSongs()
             if self.SongNotPlaying(): self.PlayNextSong()
-
-        self.log("exit")
+            xbmc.sleep(1000)
+            time.sleep(.5) 
+        self.log("OK exit")
 
 class PandoraSlimSong(object):
     def __init__(self,pslim,psong):

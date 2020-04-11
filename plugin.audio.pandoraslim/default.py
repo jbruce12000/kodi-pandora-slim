@@ -1,4 +1,4 @@
-import httplib, socket, threading, time, urllib, urllib2, urlparse
+import httplib, socket, threading, time, urllib, urllib2, urlparse,sys
 import xbmc, xbmcaddon, xbmcgui, xbmcplugin, xbmcvfs
 import musicbrainzngs as _brain
 from mutagen.mp4 import MP4
@@ -27,6 +27,16 @@ class PandoraSlim(object):
         self.brain = _brain
         self.brain.set_useragent("xbmc.%s" % self.plugin, self.version)
         self.SetCacheDirs()
+        self.CheckAuth()       
+        if (self.station):
+            self.log("OK station is set to %s, %s" % (self.station,self.station[0]))
+            if type(self.station) is not Station: self.station = self.pandora.get_station_by_id(self.station[0])
+            self.ShowXBMCPlaylist()
+
+
+    def ShowXBMCPlaylist(self):
+        xbmc.executebuiltin('ActivateWindow(10500)')
+        xbmc.executebuiltin("Container.Refresh")
 
     def Proxy(self):
         '''set pandoras url opener'''
@@ -64,8 +74,6 @@ class PandoraSlim(object):
     def DisplayStations(self):
         '''add stations to directory listing and display them'''
 
-        self.CheckAuth()
-
         sort = self.settings.getSetting('sort')
         stations = self.pandora.stations
         quickmix = stations.pop(0)							# grab Quickmix off top
@@ -96,7 +104,7 @@ class PandoraSlim(object):
         except (PandoraTimeout, PandoraNetError): pass
         except (PandoraAuthTokenInvalid, PandoraAPIVersionError, PandoraError) as e:
             xbmcgui.Dialog().ok(_name, e.message, '', e.submsg)
-            exit()
+            sys.exit()
 
         for song in psongs:
 
@@ -118,8 +126,11 @@ class PandoraSlim(object):
             li.setProperty('mimetype', 'audio/aac')
             li.setInfo('music', { 'artist' : artist, 'album' : album, 'title' : title, 'rating' : 1, 'tracknumber' : track })
 
-            self.pslim.playlist.add(path, li)
+            self.playlist.add(path, li)
             self.log("OK added song %s" % title)
+
+        # gotta be at least one song in the playlist to set the station thumb
+        self.SetStationThumb()
 
         self.log("OK GrabSongs station=%s, songs=%d" % (self.station.name, len(psongs)))
 
@@ -165,11 +176,11 @@ class PandoraSlim(object):
         while not self.Auth():
             if xbmcgui.Dialog().yesno(_name, '          Login Failed', 'Bad User / Pass / Proxy', '       Check Settings?'):
                 self.settings.openSettings()
-            else: exit()
+            else: sys.exit()
 
     def StationSelected(self):
         if self.station is None: return False
-        self.log("OK StationSelected %s" % self.station)
+        self.log("OK StationSelected %s" % self.station.name)
         self.SetStationThumb()
         return True
   
@@ -181,15 +192,16 @@ class PandoraSlim(object):
 
     def SetStationThumb(self):
         '''set thumbnail for station to first song in playlist'''
+        if self.playlist.size() == 0: return
         # stations initially have a default thumb
         # only once it is selected can we give it a thumb 
         # from the first song in the playlist
         if self.thumb: return
 
         # set station thumbnail
-        img = self.playlist[0].artUrl #not sure this is possible (may need to use the following...
-        # img = self.playlist[0].getProperty(artUrl)
-        self.settings.setSetting("img-%s" % station.id, img)
+        img = self.playlist[0].getArt('thumb')
+        self.settings.setSetting("img-%s" % self.station.id, img)
+        self.log("OK SetStationThumb")
 
     def OutOfSongs(self):
         '''are we out of songs in the cache'''
@@ -212,10 +224,16 @@ class PandoraSlim(object):
         # will this play just one song???
         # not a blocking call
         self.player.playselected(curr+1)
+
+        if xbmcgui.getCurrentWindowId() == 10500:
+            xbmc.executebuiltin("Container.Refresh")
          
         # cleanup as needed 
         self.ExpireFiles()
         self.ExpireFromPlaylist()
+        self.log("OK PlayNextSong")
+        time.sleep(5)
+
 
     def log(self,string,level=xbmc.LOGDEBUG):
         xbmc.log("%s %s" % (self.plugin,string),level)
@@ -224,7 +242,7 @@ class PandoraSlim(object):
         self.log("OK started") 
         if not self.StationSelected(): 
             self.DisplayStations()
-            exit()
+            sys.exit()
 
         while (not xbmc.abortRequested):
             if self.OutOfSongs(): self.GrabSongs()

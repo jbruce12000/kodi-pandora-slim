@@ -98,10 +98,28 @@ class PandoraSlim(object):
             xbmcgui.Dialog().ok(_name, e.message, '', e.submsg)
             exit()
 
-        for psong in psongs:
-            song = PandoraSlimSong(self,psong) # passing PandoraSlim and a song
-            # FIX not sure what to do here
-            # Need to move all of PandoraSlimSong into this class 
+        for song in psongs:
+
+            qual = self.settings.getSetting('quality')
+            path = song.audioUrl[qual]
+
+            # set the track number for this song
+            track = self.playlist.size()
+            track = track + 1
+
+            # cleanup title, artist, album
+            badc = '\\/?%*:|"<>.'
+            title = ''.join(c for c in song.title if c not in badc)
+            artist = ''.join(c for c in song.artist if c not in badc)
+            album = ''.join(c for c in song.album if c not in badc)
+
+            li = xbmcgui.ListItem(song.artist, song.title, song.artUrl, song.artUrl)
+            li.setProperty(self.plugin, self.stamp)
+            li.setProperty('mimetype', 'audio/aac')
+            li.setInfo('music', { 'artist' : artist, 'album' : album, 'title' : title, 'rating' : 1, 'tracknumber' : track })
+
+            self.pslim.playlist.add(path, li)
+            self.log("OK added song %s" % title)
 
         self.log("OK GrabSongs station=%s, songs=%d" % (self.station.name, len(psongs)))
 
@@ -133,11 +151,11 @@ class PandoraSlim(object):
         m4a = xbmc.translatePath(self.settings.getSetting('m4a')).decode("utf-8")
         exp = time.time() - (float(self.settings.getSetting('expire')) * 3600.0)
         reg = re.compile('^[a-z0-9]{32}\.')
-
         (dirs, list) = xbmcvfs.listdir(m4a)
 
-        for file in list: if reg.match(file): file = "%s/%s" % (m4a, file)
-
+        for file in list:
+            if reg.match(file):
+                file = "%s/%s" % (m4a, file)
                 if xbmcvfs.Stat(file).st_mtime() < exp:
                     xbmcvfs.delete(file)
                     self.log("OK ExpireFiles %s" % (file))
@@ -190,9 +208,10 @@ class PandoraSlim(object):
 
     def PlayNextSong(self):
         '''play the next song'''
-
         curr = self.playlist.getposition()
-        self.player.playselected(curr+1) # will this play just one song???
+        # will this play just one song???
+        # not a blocking call
+        self.player.playselected(curr+1)
          
         # cleanup as needed 
         self.ExpireFiles()
@@ -213,225 +232,6 @@ class PandoraSlim(object):
             xbmc.sleep(1000)
             time.sleep(.5) 
         self.log("OK exit")
-
-class PandoraSlimSong(object):
-    def __init__(self,pslim,psong):
-        self.pslim = pslim
-        self.plugin = self.pslim.plugin
-        self.stamp = self.pslim.stamp
-        self.brain = self.pslim.brain
-        self.psong = psong
-        self.badc = '\\/?%*:|"<>.'
-        self.title = ''.join(c for c in self.psong.title if c not in self.badc)
-        self.artist = ''.join(c for c in self.psong.artist if c not in self.badc)
-        self.album = ''.join(c for c in self.psong.album if c not in self.badc)
-        self.artUrl = self.psong.artUrl
-        self.audioUrl = self.psong.audioUrl
-        self.songId = self.psong.songId
-        self.stationId = self.psong.stationId
-        self.wtf = self.songId[:4]
-        self.rating = None #never gets set anywhere
-        self.track = 0 #track number for this specific song in current playlist
-
-
-    def Tag(self,path):
-        '''add tags for name, artist, and title to a song and save em'''
-        tag = MP4(path)
-        dur = str(int(tag.info.length * 1000))
-        res = self.brain.search_recordings(limit = 1, query = self.title, artist = self.artist, release = self.album, qdur = dur)['recording-list'][0]
-        sco = res['ext:score']
-
-        if sco == '100':
-            tag['----:com.apple.iTunes:MusicBrainz Track Id'] = res['id']
-            tag['\xa9ART'] = self.artist
-            tag['\xa9alb'] = self.album
-            tag['\xa9nam'] = self.title
-
-            tag.save()
-            xbmc.log("%s.Tag   OK (%13s,%4s %%)    '%s - %s - %s'" % (self.plugin, self.stamp, sco, song.wtf, song.artist, song.title), xbmc.LOGDEBUG)
-            return True
-        else:
-            xbmc.log("%s.Tag FAIL (%13s,%4s %%)    '%s - %s - %s'" % (self.plugin, self.stamp, sco, song.wtf, song.artist, song.title), xbmc.LOGDEBUG)
-            return False
-
-
-    def Save(self):
-        '''save song, tags, album and artist art'''
-        if self.pslim.settings.getSetting('mode') != '1': return	# do not Save to Library because of user setting
-
-        # copy song to temporary directory
-        tmp = "%s.temp" % (self.path)
-        xbmcvfs.copy(self.path, tmp)
-
-        if self.Tag(tmp):
-            lib = self.pslim.settings.getSetting('lib')
-            dir = xbmc.translatePath(("%s/%s/%s - %s"             % (lib, self.artist, self.artist, self.album))                         ).decode("utf-8")
-            dst = xbmc.translatePath(("%s/%s/%s - %s/%s - %s.m4a" % (lib, self.artist, self.artist, self.album, self.artist, self.title))).decode("utf-8")
-            alb = xbmc.translatePath(("%s/%s/%s - %s/folder.jpg"  % (lib, self.artist, self.artist, self.album))                         ).decode("utf-8")
-            art = xbmc.translatePath(("%s/%s/folder.jpg"          % (lib, self.artist))                                                  ).decode("utf-8")
-
-            xbmcvfs.mkdirs(dir)
-            xbmcvfs.rename(tmp, dst)
-
-            # fetch and save the album and artist images
-            # it's ok if these fail, best effort
-            try:
-                if not xbmcvfs.exists(alb): urllib.urlretrieve(self.artUrl, alb)
-                if not xbmcvfs.exists(art): urllib.urlretrieve(self.artUrl, art)
-            except IOError: pass
-
-        # clean up temporary file
-        else: xbmcvfs.delete(tmp)
-
-        xbmc.log("%s.Save  OK (%13s) '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.artist, self.title), xbmc.LOGDEBUG)
-
-    # FIXME - this whole funtion needs to move to Pandoraslim
-    def Queue(self,path):
-        '''add song to the queue'''
-        # these globals work across threads? not sure. leaving here.
-        self.pslim.tracks += 1
-        self.track = self.pslim.tracks 
-
-        li = xbmcgui.ListItem(self.artist, self.title, self.artUrl, self.artUrl)
-        li.setProperty(self.plugin, self.stamp)
-        li.setProperty('mimetype', 'audio/aac')
-        li.setInfo('music', { 'artist' : self.artist, 'album' : self.album, 'title' : self.title, 'rating' : self.rating, 'tracknumber' : self.track })
-
-        self.pslim.play = True
-        self.pslim.lock.acquire()
-        self.pslim.playlist.add(path, li)
-        self.pslim.lock.release()
-
-        xbmc.log("%s.Queue OK (%13s)           '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.artist, self.title), xbmc.LOGDEBUG)
-
-
-    def Msg(self,msg):
-        '''pandora message? ad? not sure'''
-        self.title = msg
-        self.artist = 'Pandora'
-        self.artUrl = "special://home/addons/%s/icon.png" % self.plugin
-        self.album = self.rating = None
-        self.Queue(song, "special://home/addons/%s/silent.m4a" % self.plugin)
-
-    def Fetch(self,path):
-        '''fetch a song, save it'''
-        # FIXME - this def is too big
-
-        # after initial installation isad='' which bombed out here
-        try:
-            isad = int(self.pslim.settings.getSetting('isad')) * 1024
-        except ValueError:
-            isad = 256
-        
-        # this likely would cause the same error, fixing it too
-        try:
-            wait = int(self.pslim.settings.getSetting('delay'))
-        except ValueError:
-            wait = 5
-
-        qual = self.pslim.settings.getSetting('quality')
-        skip = self.pslim.settings.getSetting('skip')
-
-        # this bombed out too. not sure returning None here is right
-        if qual not in self.audioUrl:
-            return None
-
-        # how big is the file
-        url  = urlparse.urlsplit(song.audioUrl[qual])
-        conn = httplib.HTTPConnection(url.netloc, timeout = 9)
-        conn.request('GET', "%s?%s" % (url.path, url.query))
-        strm = conn.getresponse()
-        size = int(strm.getheader('content-length'))
-
-        if size in (341980, 173310): # empty song cause requesting to fast
-            xbmc.log("%s.Fetch MT (%13s,%8d)  '%s - %s - %s'" % (self.plugin, self.stamp, size, self.wtf, self.artist, self.title), xbmc.LOGDEBUG)
-            self.Msg(song, 'Too Many Songs Requested')
-            return None
-
-        xbmc.log("%s.Fetch %s (%13s,%8d)  '%s - %s - %s'" % (self.plugin, strm.reason, self.stamp, size, self.wtf, self.artist, self.title))
-
-
-        # save the file
-        totl = 0
-        qued = False
-        last = time.time()
-        file = open(path, 'wb', 0)
-
-        while (totl < size) and (not xbmc.abortRequested):
-            try: data = strm.read(min(4096, size - totl))
-            except socket.timeout:
-                xbmc.log("%s.Fetch TO (%13s,%8d)  '%s - %s - %s'" % (_plugin, _stamp, totl, self.wtf, song.artist, song.title), xbmc.LOGDEBUG)
-                break
-
-            # this is the only place pslim.high gets set... 
-            if self.pslim.high < (time.time() - last): self.pslim.high = time.time() - last
-            last = time.time()
-
-            file.write(data)
-            totl += len(data)
-
-            if (not qued) and (size > isad):
-                threading.Timer(wait, self.Queue, (self, path)).start()
-                qued = True
-
-        file.close()
-        conn.close()
-        
-        if totl < size:	        # incomplete file
-            xbmc.log("%s.Fetch RM (%13s)           '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.artist, self.title), xbmc.LOGDEBUG)
-            xbmcvfs.delete(path)
-            return None
-
-        if size <= isad:        # looks like an ad
-            if skip == 'true':
-                xbmc.log("%s.Fetch AD (%13s)           '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.artist, self.title), xbmc.LOGDEBUG)
-                xbmcvfs.delete(path)
-                return None
-
-            if qued == False:   # play it anyway
-                song.artist = song.album = song.title = 'Advertisement'
-                dest = path + '.ad.m4a'
-                xbmcvfs.rename(path, dest)
-                self.Queue(dest)
-                return None
-
-        self.Save(path)
-
-
-    def Whereis(self):
-        '''if we have song already, use that'''
-        lib = xbmc.translatePath(("%s/%s/%s - %s/%s - %s.m4a" % (self.pslim.settings.getSetting('lib'), self.artist, self.artist, self.album, self.artist, self.title))).decode("utf-8")
-        m4a = xbmc.translatePath(("%s/%s.m4a" % (self.pslim.settings.getSetting('m4a'), self.songId))).decode("utf-8")
-
-        # set station thumbnail
-        if not self.pslim.settings.getSetting("img-%s" % self.stationId): #FIXME - sometime try making name img-station-%s here
-            self.pslim.settings.setSetting("img-%s" % self.stationId, self.artUrl)
-
-        # Found in Library
-        if xbmcvfs.exists(lib): # Found in Library
-            xbmc.log("%s.Song LIB (%13s)           '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.safe_str(self.artist), self.safe_str(self.title)))
-            self.Queue(lib)
-         
-        elif xbmcvfs.exists(m4a): # Found in Cache
-            xbmc.log("%s.Song M4A (%13s)           '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.safe_str(self.artist), self.safe_str(self.title)))
-            self.Queue(m4a)
-
-        elif self.pslim.settings.getSetting('mode') == '0': # Stream Only
-            xbmc.log("%s.Song PAN (%13s)           '%s - %s - %s'" % (self.plugin, self.stamp, self.wtf, self.safe_str(self.artist), self.safe_str(self.title))) 
-            qual = self.pslim.settings.getSetting('quality')
-            if qual in self.audioUrl:
-                self.Queue(self.audioUrl[qual]) #FIXME this can probably be moved and set as the default for Queue
-            else:
-                xbmc.log("%s.Song (%13s) quality of that song not available to stream" % (self.plugin, self.stamp))
-        else:					# Cache / Save
-            self.Fetch(m4a)
-
-    def safe_str(self,obj):
-        try: return str(obj)
-        except UnicodeEncodeError:
-            return obj.encode('ascii', 'ignore').decode('ascii')
-        return ""
-
 
 # main
 addon = PandoraSlim()

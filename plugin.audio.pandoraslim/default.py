@@ -148,42 +148,6 @@ class PandoraSlim(object):
 
         self.log("OK GrabSongs station=%s, songs=%d" % (self.station.name, len(psongs)))
 
-    def Play(self):
-        # FIXME - this whole def goes away...
-
-        # not sure why this exists
-        li = xbmcgui.ListItem(self.station[0])
-        li.setPath("special://home/addons/%s/silent.m4a" % self.plugin)
-        li.setProperty(self.plugin, self.stamp)
-        li.setProperty('mimetype', 'audio/aac')
-
-        # not sure about his stuff either
-        xbmcplugin.setResolvedUrl(self.handle, True, li)
-        self.player.play(self.playlist)
-        xbmc.executebuiltin('ActivateWindow(10500)')
-
-        xbmc.log("%s.Play  OK (%13s)           '%s - %s'" % (self.plugin, self.stamp, self.station.id[-4:], self.station.name))
-
-
-    def ExpireFromPlaylist(self):
-        '''Remove the first item from the playlist'''
-        while (self.playlist.size() > int(self.settings.getSetting('listmax'))) and (self.playlist.getposition() > 0):
-            xbmc.executeJSONRPC('{"jsonrpc":"2.0", "id":1, "method":"Playlist.Remove", "params":{"playlistid":' + str(xbmc.PLAYLIST_MUSIC) + ', "position":0}}')
-
-    def ExpireFiles(self):
-        '''remove files from the filesystem per settings'''
-        m4a = xbmc.translatePath(self.settings.getSetting('m4a')).decode("utf-8")
-        exp = time.time() - (float(self.settings.getSetting('expire')) * 3600.0)
-        reg = re.compile('^[a-z0-9]{32}\.')
-        (dirs, list) = xbmcvfs.listdir(m4a)
-
-        for file in list:
-            if reg.match(file):
-                file = "%s/%s" % (m4a, file)
-                if xbmcvfs.Stat(file).st_mtime() < exp:
-                    xbmcvfs.delete(file)
-                    self.log("OK ExpireFiles %s" % (file))
-
     def CheckAuth(self):
         '''authenticate in a loop until success'''
         while not self.Auth():
@@ -215,33 +179,6 @@ class PandoraSlim(object):
         img = self.playlist[0].getArt('thumb')
         self.settings.setSetting("img-%s" % self.station.id, img)
         self.log("OK SetStationThumb")
-
-    def OutOfSongs(self):
-        '''are we out of songs in the cache'''
-        # I think we can have kodi grab songs while the current song is still playing
-        # FIXME - static lookahead of 3 here needs to be configurable
-        if self.playlist.size() == 0: return True
-        if (self.playlist.size() - self.playlist.getposition()) <= 2: return True
-        self.log("OK OutOfSongs pos=%s, playlist size=%s" %(self.playlist.getposition(),self.playlist.size()))
-        return False
-
-    def SongNotPlaying(self):
-        '''returns True if no song is currently playing'''
-        if self.player.isPlayingAudio(): 
-            self.log("OK Song is playing")
-            return False
-        self.log("OK SongNotPlaying")
-        return True
-
-    def PlayNextSong(self):
-        '''play the next song'''
-        if self.juststarted:
-            self.player.playselected(0)
-            self.juststarted = False
-        else:
-            curr = self.playlist.getposition()
-            self.log("OK PlayNextSong current position is %s" % curr)
-            self.player.playselected(curr+1)
 
     def PlayFirstSong(self):
         self.ShowXBMCPlaylist()

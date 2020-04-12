@@ -26,6 +26,9 @@ class PandoraSlim(object):
         self.stamp = self.started
         self.brain = _brain
         self.brain.set_useragent("xbmc.%s" % self.plugin, self.version)
+
+        if self.AlreadyRunning: sys.exit()
+
         self.SetCacheDirs()
         self.CheckAuth()       
         if (self.station):
@@ -33,9 +36,17 @@ class PandoraSlim(object):
             if type(self.station) is not Station: self.station = self.pandora.get_station_by_id(self.station[0])
             self.ShowXBMCPlaylist()
 
+    def AlreadyRunning(self):
+        '''check if this plugin is already running'''
+        win = xbmcgui.Window(10000)
+        if win.getProperty('%s.running' % self.name) == 'True':
+            self.log("OK Already running")
+            return True
+        return False
 
     def ShowXBMCPlaylist(self):
-        xbmc.executebuiltin('ActivateWindow(10500)')
+        xbmc.executebuiltin('Dialog.Close(busydialog)')
+        xbmc.executebuiltin('ActivateWindow(musicplaylist)')
         xbmc.executebuiltin("Container.Refresh")
 
     def Proxy(self):
@@ -143,7 +154,6 @@ class PandoraSlim(object):
         li.setProperty(self.plugin, self.stamp)
         li.setProperty('mimetype', 'audio/aac')
 
-
         # not sure about his stuff either
         xbmcplugin.setResolvedUrl(self.handle, True, li)
         self.player.play(self.playlist)
@@ -209,12 +219,14 @@ class PandoraSlim(object):
         # FIXME - static lookahead of 3 here needs to be configurable
         if self.playlist.size() == 0: return True
         if (self.playlist.size() - self.playlist.getposition()) <= 2: return True
-        self.log("OK OutOfSongs")
+        self.log("OK OutOfSongs pos=%s, playlist size=%s" %(self.playlist.getposition(),self.playlist.size()))
         return False
 
     def SongNotPlaying(self):
         '''returns True if no song is currently playing'''
-        if self.player.isPlayingAudio(): return False
+        if self.player.isPlayingAudio(): 
+            self.log("OK Song is playing")
+            return False
         self.log("OK SongNotPlaying")
         return True
 
@@ -225,15 +237,13 @@ class PandoraSlim(object):
         # not a blocking call
         self.player.playselected(curr+1)
 
-        if xbmcgui.getCurrentWindowId() == 10500:
-            xbmc.executebuiltin("Container.Refresh")
-         
         # cleanup as needed 
+        self.ShowXBMCPlaylist()
         self.ExpireFiles()
         self.ExpireFromPlaylist()
         self.log("OK PlayNextSong")
+        # FIXME - not sure how long this should be (maybe 0, maybe 10s)
         time.sleep(5)
-
 
     def log(self,string,level=xbmc.LOGDEBUG):
         xbmc.log("%s %s" % (self.plugin,string),level)
@@ -250,7 +260,9 @@ class PandoraSlim(object):
             xbmc.sleep(1000)
             time.sleep(.5) 
         self.log("OK exit")
+        sys.exit()
 
 # main
 addon = PandoraSlim()
 addon.start()
+

@@ -4,6 +4,13 @@ import musicbrainzngs as _brain
 from mutagen.mp4 import MP4
 from pithos.pithos import *
 
+# FIXME 
+# - clean up settings
+# - try max songs
+# - final cleanup of variables (class globals)
+# - remove AlreadyRunning
+# - probably don't need SetCacheDirs anymore
+
 class PandoraSlim(object):
     def __init__(self):
         self.juststarted = True
@@ -189,7 +196,7 @@ class PandoraSlim(object):
             self.GrabSongs()
             self.log("OK GrabAllSongs we have %s of %s" % (self.playlist.size(),self.maxsongs))
             xbmc.sleep(500)
-        self.log("GrabAllSongs complete")
+        self.log("OK GrabAllSongs complete")
 
     def log(self,string,level=xbmc.LOGDEBUG):
         xbmc.log("%s %s" % (self.plugin,string),level)

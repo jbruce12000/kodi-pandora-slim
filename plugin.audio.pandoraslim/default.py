@@ -6,8 +6,11 @@ from pithos.pithos import *
 
 class PandoraSlim(object):
     def __init__(self):
+        self.juststarted = True
         self.settings = xbmcaddon.Addon()
         self.plugin = self.settings.getAddonInfo('id')
+        self.log("OK started")
+        self.maxsongs = int(self.settings.getSetting('listmax'))
         self.name = self.settings.getAddonInfo('name')
         self.version = self.settings.getAddonInfo('version')
         self.proxy = self.settings.getSetting('proxy')
@@ -27,14 +30,13 @@ class PandoraSlim(object):
         self.brain = _brain
         self.brain.set_useragent("xbmc.%s" % self.plugin, self.version)
 
-        if self.AlreadyRunning: sys.exit()
+        if self.AlreadyRunning(): sys.exit()
 
         self.SetCacheDirs()
         self.CheckAuth()       
         if (self.station):
             self.log("OK station is set to %s, %s" % (self.station,self.station[0]))
             if type(self.station) is not Station: self.station = self.pandora.get_station_by_id(self.station[0])
-            self.ShowXBMCPlaylist()
 
     def AlreadyRunning(self):
         '''check if this plugin is already running'''
@@ -47,6 +49,7 @@ class PandoraSlim(object):
     def ShowXBMCPlaylist(self):
         xbmc.executebuiltin('Dialog.Close(busydialog)')
         xbmc.executebuiltin('ActivateWindow(musicplaylist)')
+        xbmc.executebuiltin("Container.Update")
         xbmc.executebuiltin("Container.Refresh")
 
     def Proxy(self):
@@ -109,7 +112,6 @@ class PandoraSlim(object):
 
     def GrabSongs(self):
         '''Grab some songs from Pandora'''
-        if type(self.station) is not Station: self.station = self.pandora.get_station_by_id(self.station[0])
 
         try: psongs = self.station.get_playlist()
         except (PandoraTimeout, PandoraNetError): pass
@@ -138,7 +140,8 @@ class PandoraSlim(object):
             li.setInfo('music', { 'artist' : artist, 'album' : album, 'title' : title, 'rating' : 1, 'tracknumber' : track })
 
             self.playlist.add(path, li)
-            self.log("OK added song %s" % title)
+            
+            self.log("OK added song %s, track=%s" % (title,track))
 
         # gotta be at least one song in the playlist to set the station thumb
         self.SetStationThumb()
@@ -232,34 +235,38 @@ class PandoraSlim(object):
 
     def PlayNextSong(self):
         '''play the next song'''
-        curr = self.playlist.getposition()
-        # will this play just one song???
-        # not a blocking call
-        self.player.playselected(curr+1)
+        if self.juststarted:
+            self.player.playselected(0)
+            self.juststarted = False
+        else:
+            curr = self.playlist.getposition()
+            self.log("OK PlayNextSong current position is %s" % curr)
+            self.player.playselected(curr+1)
 
-        # cleanup as needed 
+    def PlayFirstSong(self):
         self.ShowXBMCPlaylist()
-        self.ExpireFiles()
-        self.ExpireFromPlaylist()
-        self.log("OK PlayNextSong")
-        # FIXME - not sure how long this should be (maybe 0, maybe 10s)
-        time.sleep(5)
+        self.player.playselected(0)
+
+    def GrabAllSongs(self):
+        while(self.playlist.size() < self.maxsongs):
+            self.GrabSongs()
+            self.log("OK GrabAllSongs we have %s of %s" % (self.playlist.size(),self.maxsongs))
+            xbmc.sleep(500)
+        self.log("GrabAllSongs complete")
 
     def log(self,string,level=xbmc.LOGDEBUG):
         xbmc.log("%s %s" % (self.plugin,string),level)
 
     def start(self):
-        self.log("OK started") 
+
+        # user must select a station first
         if not self.StationSelected(): 
             self.DisplayStations()
             sys.exit()
 
-        while (not xbmc.abortRequested):
-            if self.OutOfSongs(): self.GrabSongs()
-            if self.SongNotPlaying(): self.PlayNextSong()
-            xbmc.sleep(1000)
-            time.sleep(.5) 
-        self.log("OK exit")
+        # in 2nd invocation, get and play songs
+        self.GrabAllSongs()
+        self.PlayFirstSong()
         sys.exit()
 
 # main

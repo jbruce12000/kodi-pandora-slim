@@ -28,30 +28,32 @@ class PandoraSlim(object):
         self.station = self.query.get('station', None)
         self.thumb = self.query.get('thumb', None)
         self.playlist = xbmc.PlayList(xbmc.PLAYLIST_MUSIC)
-        self.playlist.clear() # FIXME - probably not needed
+        #self.playlist.clear() # FIXME - probably not needed
         self.player = xbmc.Player()
         self.pandora = Pandora()  # from pithos.pithos
-        self.tracks = 0 # number of tracks in this playlist so far
         self.started = str(time.time())
         self.stamp = self.started
         self.brain = _brain
         self.brain.set_useragent("xbmc.%s" % self.plugin, self.version)
 
-        if self.AlreadyRunning(): sys.exit()
+        # FIXME - probably don't need
+        #if self.AlreadyRunning(): sys.exit()
 
-        self.SetCacheDirs()
+        # FIXME - not caching anything now
+        #self.SetCacheDirs()
+
+
         self.CheckAuth()       
         if (self.station):
-            self.log("OK station is set to %s, %s" % (self.station,self.station[0]))
             if type(self.station) is not Station: self.station = self.pandora.get_station_by_id(self.station[0])
 
-    def AlreadyRunning(self):
-        '''check if this plugin is already running'''
-        win = xbmcgui.Window(10000)
-        if win.getProperty('%s.running' % self.name) == 'True':
-            self.log("OK Already running")
-            return True
-        return False
+    #def AlreadyRunning(self):
+    #    '''check if this plugin is already running'''
+    #    win = xbmcgui.Window(10000)
+    #    if win.getProperty('%s.running' % self.name) == 'True':
+    #        self.log("OK Already running")
+    #        return True
+    #    return False
 
     def ShowXBMCPlaylist(self):
         xbmc.executebuiltin('Dialog.Close(busydialog)')
@@ -168,11 +170,11 @@ class PandoraSlim(object):
         self.SetStationThumb()
         return True
   
-    def SetCacheDirs(self):
-        '''set cache directories, runs once at startup'''
-        for dir in [ 'm4a', 'lib' ]:
-            dir = xbmc.translatePath(self.settings.getSetting(dir)).decode("utf-8")
-            xbmcvfs.mkdirs(dir)
+   # def SetCacheDirs(self):
+   #     '''set cache directories, runs once at startup'''
+   #     for dir in [ 'm4a', 'lib' ]:
+   #         dir = xbmc.translatePath(self.settings.getSetting(dir)).decode("utf-8")
+   #         xbmcvfs.mkdirs(dir)
 
     def SetStationThumb(self):
         '''set thumbnail for station to first song in playlist'''
@@ -202,7 +204,7 @@ class PandoraSlim(object):
         xbmc.log("%s %s" % (self.plugin,string),level)
 
     def start(self):
-
+        '''which page do I go to'''
         # user must select a station first
         if not self.StationSelected(): 
             self.DisplayStations()
@@ -216,4 +218,3 @@ class PandoraSlim(object):
 # main
 addon = PandoraSlim()
 addon.start()
-

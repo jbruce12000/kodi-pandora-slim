@@ -28,7 +28,7 @@ class PandoraSlim(object):
         self.station = self.query.get('station', None)
         self.thumb = self.query.get('thumb', None)
         self.playlist = xbmc.PlayList(xbmc.PLAYLIST_MUSIC)
-        self.playlist.clear() # FIXME - probably not needed
+        self.playlist.clear()
         self.player = xbmc.Player()
         self.pandora = Pandora()  # from pithos.pithos
         self.tracks = 0 # number of tracks in this playlist so far
@@ -37,7 +37,6 @@ class PandoraSlim(object):
         self.brain = _brain
         self.brain.set_useragent("xbmc.%s" % self.plugin, self.version)
 
-        self.SetCacheDirs()
         self.CheckAuth()       
         if (self.station):
             self.log("OK station is set to %s, %s" % (self.station,self.station[0]))
@@ -142,7 +141,6 @@ class PandoraSlim(object):
         # gotta be at least one song in the playlist to set the station thumb
         self.SetStationThumb()
         self.ShowXBMCPlaylist()
-
         self.log("OK GrabSongs station=%s, songs=%d" % (self.station.name, len(psongs)))
 
     def CheckAuth(self):
@@ -157,12 +155,6 @@ class PandoraSlim(object):
         self.log("OK StationSelected %s" % self.station.name)
         self.SetStationThumb()
         return True
-  
-    def SetCacheDirs(self):
-        '''set cache directories, runs once at startup'''
-        for dir in [ 'm4a', 'lib' ]:
-            dir = xbmc.translatePath(self.settings.getSetting(dir)).decode("utf-8")
-            xbmcvfs.mkdirs(dir)
 
     def SetStationThumb(self):
         '''set thumbnail for station to first song in playlist'''
@@ -178,6 +170,10 @@ class PandoraSlim(object):
         self.log("OK SetStationThumb")
 
     def PlayFirstSong(self):
+        # this is a no-no in a plugin, but if I don't do it, the player
+        # goes nuts and starts at random places in the playlist.
+        # it's a big stinking pile of shit that's probably caused
+        # by my horrible lack of understanding
         self.player.playselected(-1)
 
     def GrabAllSongs(self):

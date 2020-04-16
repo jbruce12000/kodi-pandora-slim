@@ -37,26 +37,15 @@ class PandoraSlim(object):
         self.brain = _brain
         self.brain.set_useragent("xbmc.%s" % self.plugin, self.version)
 
-        if self.AlreadyRunning(): sys.exit()
-
         self.SetCacheDirs()
         self.CheckAuth()       
         if (self.station):
             self.log("OK station is set to %s, %s" % (self.station,self.station[0]))
             if type(self.station) is not Station: self.station = self.pandora.get_station_by_id(self.station[0])
 
-    def AlreadyRunning(self):
-        '''check if this plugin is already running'''
-        win = xbmcgui.Window(10000)
-        if win.getProperty('%s.running' % self.name) == 'True':
-            self.log("OK Already running")
-            return True
-        return False
-
     def ShowXBMCPlaylist(self):
         xbmc.executebuiltin('Dialog.Close(busydialog)')
         xbmc.executebuiltin('ActivateWindow(musicplaylist)')
-        xbmc.executebuiltin("Container.Update")
         xbmc.executebuiltin("Container.Refresh")
 
     def Proxy(self):
@@ -152,6 +141,7 @@ class PandoraSlim(object):
 
         # gotta be at least one song in the playlist to set the station thumb
         self.SetStationThumb()
+        self.ShowXBMCPlaylist()
 
         self.log("OK GrabSongs station=%s, songs=%d" % (self.station.name, len(psongs)))
 
@@ -188,18 +178,23 @@ class PandoraSlim(object):
         self.log("OK SetStationThumb")
 
     def PlayFirstSong(self):
-        self.ShowXBMCPlaylist()
-        self.player.playselected(0)
+        self.player.playselected(-1)
 
     def GrabAllSongs(self):
         while(self.playlist.size() < self.maxsongs):
             self.GrabSongs()
             self.log("OK GrabAllSongs we have %s of %s" % (self.playlist.size(),self.maxsongs))
-            xbmc.sleep(500)
+            self.player.stop()
         self.log("OK GrabAllSongs complete")
 
     def log(self,string,level=xbmc.LOGDEBUG):
-        xbmc.log("%s %s" % (self.plugin,string),level)
+        xbmc.log("%s %s" % (self.plugin,self.safe_str(string)),level)
+
+    def safe_str(self,obj):
+        try: return str(obj)
+        except UnicodeEncodeError:
+            return obj.encode('ascii', 'ignore').decode('ascii')
+        return ""
 
     def start(self):
 

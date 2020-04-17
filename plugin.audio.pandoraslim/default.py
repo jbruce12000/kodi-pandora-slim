@@ -13,7 +13,6 @@ from pithos.pithos import *
 
 class PandoraSlim(object):
     def __init__(self):
-        self.juststarted = True
         self.settings = xbmcaddon.Addon()
         self.plugin = self.settings.getAddonInfo('id')
         self.log("OK started")
@@ -31,7 +30,6 @@ class PandoraSlim(object):
         self.playlist.clear()
         self.player = xbmc.Player()
         self.pandora = Pandora()  # from pithos.pithos
-        self.tracks = 0 # number of tracks in this playlist so far
         self.started = str(time.time())
         self.stamp = self.started
         self.brain = _brain
@@ -55,10 +53,10 @@ class PandoraSlim(object):
             hand = urllib2.ProxyHandler({})
             open = urllib2.build_opener(hand)
         elif self.proxy == '2':	# Custom
-            host = _settings.getSetting('proxy_host')
-            port = _settings.getSetting('proxy_port')
-            user = _settings.getSetting('proxy_user')
-            word = _settings.getSetting('proxy_pass')
+            host = self.settings.getSetting('proxy_host')
+            port = self.settings.getSetting('proxy_port')
+            user = self.settings.getSetting('proxy_user')
+            word = self.settings.getSetting('proxy_pass')
             prox = "http://%s:%s@%s:%s" % (user, word, host, port)
             hand = urllib2.ProxyHandler({ 'http' : prox })
             open = urllib2.build_opener(hand)
@@ -111,7 +109,7 @@ class PandoraSlim(object):
         try: psongs = self.station.get_playlist()
         except (PandoraTimeout, PandoraNetError): pass
         except (PandoraAuthTokenInvalid, PandoraAPIVersionError, PandoraError) as e:
-            xbmcgui.Dialog().ok(_name, e.message, '', e.submsg)
+            xbmcgui.Dialog().ok(self.name, e.message, '', e.submsg)
             sys.exit()
 
         for song in psongs:
@@ -146,7 +144,7 @@ class PandoraSlim(object):
     def CheckAuth(self):
         '''authenticate in a loop until success'''
         while not self.Auth():
-            if xbmcgui.Dialog().yesno(_name, '          Login Failed', 'Bad User / Pass / Proxy', '       Check Settings?'):
+            if xbmcgui.Dialog().yesno(self.name, '          Login Failed', 'Bad User / Pass / Proxy', '       Check Settings?'):
                 self.settings.openSettings()
             else: sys.exit()
 
